@@ -1,10 +1,8 @@
 #include <Arduino.h>
-
 /*налаштування веб інтерфейсу*/
 #include <GyverDBFile.h>
 #include <LittleFS.h>
 GyverDBFile db(&LittleFS, "/data.db");
-
 #include <SettingsGyver.h>
 SettingsGyver sett("SONIAH", &db);
 /*налаштування ключів БД*/
@@ -203,7 +201,7 @@ void setup() {
     db.init(kk::brightnessValue, 128);
     db.init(kk::switchPosition1, 0);
     db.init(kk::switchPosition2, 1);
-    db.init(kk::displayMode, "Robot Eyes");
+    db.init(kk::displayMode, 2);
 
   
 
@@ -270,36 +268,56 @@ void loop() {
   manageSwitcherPosition();
   /*========================BRIGHTNESS=================================*/
   adjustBrightness(db[kk::brightnessValue*25]);
-  /*========================robot eyes=================================*/
-  if (db[kk::displayMode] == 2) {
-    robotSeeYou();
-  };
-  /*========================display quantity hours to battery discharge=================================*/
-  if (db[kk::displayMode] == 1) {
-    display.clearDisplay();
-    display.setCursor(30,10);
-    display.println("10H");
-    display.display();
-    /*static uint32_t tmr2;
-    if (millis() - tmr2 >= 300000) { // кожні 5 хвилин оновлюэмо значення кількості часу до розрядки батареї та оновлюємо відображення на олед дисплеї
-      displayestimationTime(estimationTimeHours(batCharge(voltmeterPin),db[kk::brightnessValue*25]));
-      tmr2 = millis();  
-    }; */
-  };
-   
-  /*======================== display percent of battery charge=================================*/
-  if (db[kk::displayMode] == 0) {
-    display.clearDisplay();
-    display.setCursor(30,10);
-    display.println(100);
-    display.display();
-    /*static uint32_t tmr3;
-    if (millis() - tmr3 >= 300000) { // кожні 5 хвилин оновлюємо значення заряду батареї та оновлюємо відображення на олед дисплеї
-      displayChargeLevelOled(batCharge(voltmeterPin));
-      tmr3 = millis();  
-    }; */
-  };
 
+  /*========================robot eyes=================================*/
+  switch ((int)db[kk::displayMode]){
+    /*======================== display percent of battery charge=================================*/
+    case 0:
+      display.clearDisplay();
+      display.setCursor(30,10);
+      display.println(100);
+      display.display();
+      break;
+    /*========================display quantity hours to battery discharge=================================*/
+    case 1:
+      display.clearDisplay();
+      display.setCursor(30,10);
+      display.println("10H");
+      display.display();
+      break;
+    case 2:
+      robotSeeYou();
+      break;
+  }
+  /*depricated*/
+  // if (db[kk::displayMode] == 2) {
+  //   robotSeeYou();
+  // };
+  // if (db[kk::displayMode] == 1) {
+  //   display.clearDisplay();
+  //   display.setCursor(30,10);
+  //   display.println("10H");
+  //   display.display();
+  //   /*static uint32_t tmr2;
+  //   if (millis() - tmr2 >= 300000) { // кожні 5 хвилин оновлюэмо значення кількості часу до розрядки батареї та оновлюємо відображення на олед дисплеї
+  //     displayestimationTime(estimationTimeHours(batCharge(voltmeterPin),db[kk::brightnessValue*25]));
+  //     tmr2 = millis();  
+  //   }; */
+  // };
+   
+  // /*======================== display percent of battery charge=================================*/
+  // if (db[kk::displayMode] == 0) {
+  //   display.clearDisplay();
+  //   display.setCursor(30,10);
+  //   display.println(100);
+  //   display.display();
+  //   /*static uint32_t tmr3;
+  //   if (millis() - tmr3 >= 300000) { // кожні 5 хвилин оновлюємо значення заряду батареї та оновлюємо відображення на олед дисплеї
+  //     displayChargeLevelOled(batCharge(voltmeterPin));
+  //     tmr3 = millis();  
+  //   }; */
+  // };
+  int temperature = temperatureRead();
   sett.tick();
 }
 
