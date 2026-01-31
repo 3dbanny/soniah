@@ -19,6 +19,8 @@ enum kk : size_t {
 /*глобальні змінні без потреби у постійному зберігання в енергонезалежній пам'яті*/
 struct Data {
   int batteryChargePercent = 0;
+  bool wifiConnecting = false;
+  uint32_t wifiConnectStart = 0;
 };
 Data data;
 /*структура конфігурації розміру очей робота*/
@@ -88,7 +90,7 @@ RoboEyes<Adafruit_SSD1306> roboEyes(display);
 /*перевірка і вхід у режим глибокого сну*/
 void checkAndEnterDeepSleep() {
     static uint32_t offTimer = 0;
-    const unsigned long DEBOUNCE_TIME = 500;  // 500 мс затримка
+    const unsigned long DEBOUNCE_TIME = 5000;  // 5000 мс затримка
     
     // Якщо обидва піни LOW - перемикач в OFF
     if (digitalRead(positionOnepin) == LOW && digitalRead(positionTwopin) == LOW) {
@@ -143,18 +145,34 @@ void checkAndEnterDeepSleep() {
 }
 /*визначення заряду батареї у відсотках*/
 int batCharge(uint8_t pin) {
-  int rawValue = analogRead(pin);  // Зчитуємо значення від 0 до 4095
-  
-  float voltage = rawValue * powerManagement.ADC_VOLTAGE_MULTIPLIER;  // перетворюємо у напругу
-
-  float percentFloat = ((voltage - powerManagement.BATTERY_MIN_VOLTAGE) / (powerManagement.BATTERY_MAX_VOLTAGE - powerManagement.BATTERY_MIN_VOLTAGE)) * 100.0;
-  int percent = (int)percentFloat;
-  if (percent > 100) {
-      percent = 100;
-  } else if (percent < 0) {
-      percent = 0;
-    }  // Перетворюємо у відсотки
-  return percent;
+    static float emaValue = 0;
+    static bool initialized = false;
+    
+    // Усереднення 5 вимірів
+    const int NUM_SAMPLES = 5;
+    int sum = 0;
+    for (int i = 0; i < NUM_SAMPLES; i++) {
+        sum += analogRead(pin);
+        delayMicroseconds(100);  // мікросекунди для швидкості
+    }
+    int avgRawValue = sum / NUM_SAMPLES;
+    
+    // Ініціалізація EMA
+    if (!initialized) {
+        emaValue = avgRawValue;
+        initialized = true;
+    }
+    
+    // Експоненційне згладжування
+    const float ALPHA = 0.15;  // 15% нове, 85% старе
+    emaValue = ALPHA * avgRawValue + (1.0 - ALPHA) * emaValue;
+    
+    // Розрахунок напруги і відсотків
+    float voltage = emaValue * powerManagement.ADC_VOLTAGE_MULTIPLIER;
+    float percentFloat = ((voltage - powerManagement.BATTERY_MIN_VOLTAGE) / 
+                          (powerManagement.BATTERY_MAX_VOLTAGE - powerManagement.BATTERY_MIN_VOLTAGE)) * 100.0;
+    
+    return constrain((int)percentFloat, 0, 100);
 }
 
 /*розрахунок кількості часу, що залишився до розрядки батареї*/
@@ -270,7 +288,7 @@ void manageSwitcherPosition() {
 
 /*створення блоків веб  інтерфейсу*/
 void build(sets::Builder& b) {
-  b.Image(H(img), "", "/logo.png");
+  b.Image(H(img), "", "/logo.avif");
   b.LinearGauge(H(batCharge), "Battery", 0, 100, "", data.batteryChargePercent,batteryWidgetColorChange(data.batteryChargePercent));
   if (b.beginGroup("WiFi")) {
       b.Input(kk::wifiSsid, "SSID");
@@ -344,26 +362,19 @@ void setup() {
     db.init(kk::displayMode, 2);
 
   // ======= AP =======
-  WiFi.softAP("SONIAH🌻");
+  WiFi.softAP("SONIAH--s-@");
   Serial.print("AP IP: ");
   Serial.println(WiFi.softAPIP());
 
   // ======= STA =======
-  // если логин задан - подключаемся
-  if (db[kk::wifiSsid].length()) {
+  // один раз пробуємо підключитись до WiFi якщо є налаштування
+if (db[kk::wifiSsid].length()) {
+    Serial.print("WiFi → ");
+    Serial.println(db[kk::wifiSsid]);
     WiFi.begin(db[kk::wifiSsid], db[kk::wifiPass]);
-    Serial.print("Connect STA");
-    int tries = 20;
-    while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print('.');
-      if (!--tries) break;
-    }
-      Serial.println();
-      Serial.print("IP: ");
-      Serial.println(WiFi.localIP());
-      
-  }
+    data.wifiConnecting = true;
+    data.wifiConnectStart = millis();
+}
 
 
 
@@ -402,6 +413,15 @@ void setup() {
 
 
 void loop() {
+  if (data.wifiConnecting) {
+        if (WiFi.status() == WL_CONNECTED) {
+            Serial.println("WiFi: " + WiFi.localIP().toString());
+            data.wifiConnecting = false;
+        } else if (millis() - data.wifiConnectStart > 10000) {
+            Serial.println("WiFi timeout");
+            data.wifiConnecting = false;
+        }
+    }
   checkAndEnterDeepSleep();
   /*======================battery charge manager===================*/
   static uint32_t tmrBattery;
