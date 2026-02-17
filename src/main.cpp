@@ -34,7 +34,7 @@ struct RoboEyesConfig {
   RoboEyesConfig roboeyesconfig;
 /*структура для управління живленням*/
 struct PowerManagement {
-  const float ADC_VOLTAGE_MULTIPLIER = 3.3 * 2.0 / 4095.0;
+  const float ADC_VOLTAGE_MULTIPLIER = 3.3 * 1.8 / 4095.0;
   const float BATTERY_MAX_VOLTAGE = 4.1; // максимальна напруга батареї
   const float BATTERY_MIN_VOLTAGE = 3.2; // мінімальна напруга батар
   const int DIODE_DROP_MAH = 50; // падіння напруги на діодах в мА
