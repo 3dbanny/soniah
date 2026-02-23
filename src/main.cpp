@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include "images.h"
 #include <esp_sleep.h>
 /*налаштування веб інтерфейсу*/
 #include <GyverDBFile.h>
@@ -14,6 +15,8 @@ enum kk : size_t {
   switchPosition1,
   switchPosition2,
   displayMode,
+  themeColor,
+  language,
   apply
 };
 /*глобальні змінні без потреби у постійному зберігання в енергонезалежній пам'яті*/
@@ -48,9 +51,22 @@ struct PowerManagement {
 /*структура для локалізації - ця частина ще в розробці*/ 
 struct Lang {
   // Вказуємо розмір [2], оскільки у нас 2 мови
+  const char* BATTERY[2] = {"Battery Charge", "<Заряд батареї>"};
+  const char* MAINSETTINGS[2] = {"Main Settings", "Основні налаштування"};
   const char* WIFI[2] = {"WiFi", "WiFi"};
   const char* SSID[2] = {"ssid", "назва мережі"};
   const char* PASSWORD[2] = {"password", "пароль"};
+  const char* THEMECOLOR[2] = {"Theme Color", "Колір Теми"};
+  const char* LANGUAGE[2] = {"Language", "Мова"};
+  const char* SAVEBUTTON[2] = {"Save & Restart", "Зберегти та Перезавантажити"};
+  const char* LIGHTSETTINGS[2] = {"Flashlight settings", "Налаштування світла"};
+  const char* BRIGHTNESS[2] = {"Brightness slider", "Яскравість"};
+  const char* POSITION1[2] = {"Position 1", "Позиція перемикача 1"};
+  const char* POSITION2[2] = {"Position 2", "Позиція перемикача 2"};
+  const char* DISPLAYMODE[2] = {"Display mode", "Налаштування екрану"};
+  
+
+
 };
 
 Lang lng;
@@ -288,16 +304,19 @@ void manageSwitcherPosition() {
 
 /*створення блоків веб  інтерфейсу*/
 void build(sets::Builder& b) {
+  int lang = (int)db[kk::language];
   b.Image(H(img), "", "/logo.avif");
-  b.LinearGauge(H(batCharge), "Battery", 0, 100, "", data.batteryChargePercent,batteryWidgetColorChange(data.batteryChargePercent));
-  if (b.beginGroup("WiFi")) {
-      b.Input(kk::wifiSsid, "SSID");
-      b.Pass(kk::wifiPass, "Password");
-      if (b.Button(kk::apply, "Save & Restart")) {
-      db.update();  // зберігаємо БД не очікуючи таймауту
-      ESP.restart();
-      }
-      b.endGroup(); 
+  b.LinearGauge(H(batCharge), lng.BATTERY[lang], 0, 100, "", data.batteryChargePercent,batteryWidgetColorChange(data.batteryChargePercent));
+  if (b.beginGroup("Main Settings")) {
+    b.Input(kk::wifiSsid, "SSID");
+    b.Pass(kk::wifiPass, "Password");
+    b.Select(kk::themeColor, "Theme Color", "Green;Red;Blue;Yellow;Mint;Orange;Pink;Aqua;Violet");  // ← додати
+    if (b.Button(kk::apply, "Save & Restart")) {
+        db.update();
+        ESP.restart();
+        
+    }
+    b.endGroup();
   }
   if (b.beginGroup("Flashlight Settings")) {
       b.Slider(kk::brightnessValue, "Brightness Slider", 0, 100,1);
@@ -335,6 +354,8 @@ void setup() {
 
   ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);
   ledcAttachPin(brightnessPin, PWM_CHANNEL);
+  //вимкнути файловий менеджер 
+  sett.config.useFS = false;
 
   data.batteryChargePercent = batCharge(voltmeterPin);// перший раз отримуэмо значення заряду батареї. Наступний раз буде через 5 хвилин
   // ======== WIFI ========
@@ -342,6 +363,8 @@ void setup() {
   WiFi.mode(WIFI_AP_STA);
   // ======== SETTINGS ========
   sett.begin(true,"soniah"); // базу даних підключаємо до підключення до точки
+  sett.setVersion("1.0.0");
+  sett.setProjectInfo("SONIAH 🌻 - smart flashlight");
   sett.onBuild(build);
   sett.onUpdate(update);
   // ======== DATABASE ========
@@ -353,6 +376,23 @@ void setup() {
 
   db.begin();
 
+  File existing = LittleFS.open("/logo.avif", "r");
+  bool needWrite = !existing || existing.size() != logo_avif_len;
+  if (existing) existing.close();
+
+  if (needWrite) {
+    File f = LittleFS.open("/logo.avif", "w");
+    if (f) {
+        f.write(logo_avif, logo_avif_len);
+        f.close();
+        Serial.println("Logo updated");
+    } else {
+        Serial.println("Logo write failed");
+    }
+  } else {
+    Serial.println("Logo OK, skip write");
+  }
+
   // ініціювання БД початковими даними
     db.init(kk::wifiSsid, "");
     db.init(kk::wifiPass, "");
@@ -360,9 +400,19 @@ void setup() {
     db.init(kk::switchPosition1, 0);
     db.init(kk::switchPosition2, 1);
     db.init(kk::displayMode, 2);
+    db.init(kk::themeColor, 0);
+    db.init(kk::language, 0); // 0 = English за замовчуванням
 
+
+  //налаштування теми
+  const sets::Colors themes[] = {
+    sets::Colors::Green, sets::Colors::Red, sets::Colors::Blue,
+    sets::Colors::Yellow, sets::Colors::Mint, sets::Colors::Orange,
+    sets::Colors::Pink, sets::Colors::Aqua, sets::Colors::Violet
+  };
+  sett.config.theme = themes[(int)db[kk::themeColor]];
   // ======= AP =======
-  WiFi.softAP("SONIAH--s-@");
+  WiFi.softAP("soniahsf","soniahsf");
   Serial.print("AP IP: ");
   Serial.println(WiFi.softAPIP());
 
@@ -402,18 +452,21 @@ if (db[kk::wifiSsid].length()) {
   //roboEyes.setHFlicker(ON, 2); // horizontal flickering effect -> bool active, int intensity (1-5)
   roboEyes.setPosition(NE); // cardinal directions, can be N, NE, E, SE, S, SW, W, NW, DEFAULT (default = horizontally and vertically centered)
   //вітальна фраза на олед дисплеї
+  
   display.clearDisplay();
   display.setTextSize(3);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(45,10);//перший координат - по горизонталі, другий - по вертикалі 
   display.println("Hi");
   display.display();
-  delay(1000); // Затримка в 1 секунду
+  
+ // перезавантажити сторінку браузера
+  sett.reload(true);
 } 
 
 
 void loop() {
-  if (data.wifiConnecting) {
+    if (data.wifiConnecting) {
         if (WiFi.status() == WL_CONNECTED) {
             Serial.println("WiFi: " + WiFi.localIP().toString());
             data.wifiConnecting = false;
