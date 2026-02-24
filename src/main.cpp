@@ -52,20 +52,19 @@ struct PowerManagement {
 struct Lang {
   // Вказуємо розмір [2], оскільки у нас 2 мови
   const char* BATTERY[2] = {"Battery charge", "Заряд батареї"};
+  const char* LIGHTSETTINGS[2] = {"Flashlight", "Ліхтарик"};
+  const char* BRIGHTNESS[2] = {"Brightness slider", "Яскравість"};
+  const char* POSITION1[2] = {"Position 1", "Позиція перемикача 1"};
+  const char* POSITION2[2] = {"Position 2", "Позиція перемикача 2"};
+  const char* DISPLAYMODE[2] = {"Display mode", "Інформація на екрані"};
   const char* MAINSETTINGS[2] = {"Main settings", "Основні налаштування"};
+  const char* WIFICOLORSETTINGS[2] = {"WIFI & theme settings", "Налаштування WIFI та теми"};
   const char* WIFI[2] = {"WiFi", "WiFi"};
   const char* SSID[2] = {"SSID", "Назва мережі"};
   const char* PASSWORD[2] = {"Password", "Пароль"};
   const char* THEMECOLOR[2] = {"Theme color", "Колір теми"};
   const char* LANGUAGE[2] = {"Language", "Мова"};
   const char* SAVEBUTTON[2] = {"Save & restart", "Зберегти та перезавантажити"};
-  const char* LIGHTSETTINGS[2] = {"Flashlight settings", "Налаштування світла"};
-  const char* BRIGHTNESS[2] = {"Brightness slider", "Яскравість"};
-  const char* POSITION1[2] = {"Position 1", "Позиція перемикача 1"};
-  const char* POSITION2[2] = {"Position 2", "Позиція перемикача 2"};
-  const char* DISPLAYMODE[2] = {"Display mode", "Налаштування екрану"};
-  
-
 
 };
 
@@ -307,17 +306,7 @@ void build(sets::Builder& b) {
   int lang = (int)db[kk::language];
   b.Image(H(img), "", "/logo.avif");
   b.LinearGauge(H(batCharge), lng.BATTERY[lang], 0, 100, "", data.batteryChargePercent,batteryWidgetColorChange(data.batteryChargePercent));
-  if (b.beginGroup(lng.MAINSETTINGS[lang])) {
-    b.Input(kk::wifiSsid, lng.SSID[lang]);
-    b.Pass(kk::wifiPass, lng.PASSWORD[lang]);
-    b.Select(kk::themeColor, lng.THEMECOLOR[lang], "Green;Red;Blue;Yellow;Mint;Orange;Pink;Aqua;Violet");  // ← додати
-    if (b.Button(kk::apply, lng.SAVEBUTTON[lang])) {
-        db.update();
-        ESP.restart();
-        
-    }
-    b.endGroup();
-  }
+  
   if (b.beginGroup(lng.LIGHTSETTINGS[lang])) {
       b.Slider(kk::brightnessValue, lng.BRIGHTNESS[lang], 0, 100,1);
       if (b.beginRow()) {
@@ -337,15 +326,29 @@ void build(sets::Builder& b) {
       b.Select(kk::displayMode, lng.DISPLAYMODE[lang], "Battery Charge;Time to discharge;Robot Eyes");
       b.endGroup();
   }
-   if (b.beginGroup(lng.LANGUAGE[lang])) {
-    b.Select(kk::language, lng.LANGUAGE[lang], "English;Українська"); 
-    if (b.build.id == kk::language) {
-      lang = (int)db[kk::language];
-      b.reload();
-    }
+    if (b.beginMenu(lng.MAINSETTINGS[lang])) {
+      if (b.beginGroup(lng.WIFICOLORSETTINGS[lang])) {
+        b.Input(kk::wifiSsid, lng.SSID[lang]);
+        b.Pass(kk::wifiPass, lng.PASSWORD[lang]);
+        b.Select(kk::themeColor, lng.THEMECOLOR[lang], "Green;Red;Blue;Yellow;Mint;Orange;Pink;Aqua;Violet");  // ← додати
+        if (b.Button(kk::apply, lng.SAVEBUTTON[lang])) {
+          db.update();
+          ESP.restart();
+        
+        }
+      b.endGroup();
+      }
+      if (b.beginGroup(lng.LANGUAGE[lang])) {
+        b.Select(kk::language, lng.LANGUAGE[lang], "English;Українська"); 
+        if (b.build.id == kk::language) {
+          lang = (int)db[kk::language];
+          b.reload();
+       }
 
+      }
+      b.endGroup();
+    b.endMenu();  // не забываем завершить меню
     }
-    b.endGroup();
 }
 
 void update(sets::Updater u) {
@@ -479,9 +482,11 @@ void loop() {
         if (WiFi.status() == WL_CONNECTED) {
             Serial.println("WiFi: " + WiFi.localIP().toString());
             data.wifiConnecting = false;
-        } else if (millis() - data.wifiConnectStart > 10000) {
+        } else if (millis() - data.wifiConnectStart > 5000) {
             Serial.println("WiFi timeout");
+            WiFi.disconnect(true);
             data.wifiConnecting = false;
+            
         }
     }
   checkAndEnterDeepSleep();
