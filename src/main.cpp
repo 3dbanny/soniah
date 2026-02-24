@@ -51,14 +51,14 @@ struct PowerManagement {
 /*структура для локалізації - ця частина ще в розробці*/ 
 struct Lang {
   // Вказуємо розмір [2], оскільки у нас 2 мови
-  const char* BATTERY[2] = {"Battery Charge", "<Заряд батареї>"};
-  const char* MAINSETTINGS[2] = {"Main Settings", "Основні налаштування"};
+  const char* BATTERY[2] = {"Battery charge", "Заряд батареї"};
+  const char* MAINSETTINGS[2] = {"Main settings", "Основні налаштування"};
   const char* WIFI[2] = {"WiFi", "WiFi"};
-  const char* SSID[2] = {"ssid", "назва мережі"};
-  const char* PASSWORD[2] = {"password", "пароль"};
-  const char* THEMECOLOR[2] = {"Theme Color", "Колір Теми"};
+  const char* SSID[2] = {"SSID", "Назва мережі"};
+  const char* PASSWORD[2] = {"Password", "Пароль"};
+  const char* THEMECOLOR[2] = {"Theme color", "Колір теми"};
   const char* LANGUAGE[2] = {"Language", "Мова"};
-  const char* SAVEBUTTON[2] = {"Save & Restart", "Зберегти та Перезавантажити"};
+  const char* SAVEBUTTON[2] = {"Save & restart", "Зберегти та перезавантажити"};
   const char* LIGHTSETTINGS[2] = {"Flashlight settings", "Налаштування світла"};
   const char* BRIGHTNESS[2] = {"Brightness slider", "Яскравість"};
   const char* POSITION1[2] = {"Position 1", "Позиція перемикача 1"};
@@ -307,36 +307,45 @@ void build(sets::Builder& b) {
   int lang = (int)db[kk::language];
   b.Image(H(img), "", "/logo.avif");
   b.LinearGauge(H(batCharge), lng.BATTERY[lang], 0, 100, "", data.batteryChargePercent,batteryWidgetColorChange(data.batteryChargePercent));
-  if (b.beginGroup("Main Settings")) {
-    b.Input(kk::wifiSsid, "SSID");
-    b.Pass(kk::wifiPass, "Password");
-    b.Select(kk::themeColor, "Theme Color", "Green;Red;Blue;Yellow;Mint;Orange;Pink;Aqua;Violet");  // ← додати
-    if (b.Button(kk::apply, "Save & Restart")) {
+  if (b.beginGroup(lng.MAINSETTINGS[lang])) {
+    b.Input(kk::wifiSsid, lng.SSID[lang]);
+    b.Pass(kk::wifiPass, lng.PASSWORD[lang]);
+    b.Select(kk::themeColor, lng.THEMECOLOR[lang], "Green;Red;Blue;Yellow;Mint;Orange;Pink;Aqua;Violet");  // ← додати
+    if (b.Button(kk::apply, lng.SAVEBUTTON[lang])) {
         db.update();
         ESP.restart();
         
     }
     b.endGroup();
   }
-  if (b.beginGroup("Flashlight Settings")) {
-      b.Slider(kk::brightnessValue, "Brightness Slider", 0, 100,1);
+  if (b.beginGroup(lng.LIGHTSETTINGS[lang])) {
+      b.Slider(kk::brightnessValue, lng.BRIGHTNESS[lang], 0, 100,1);
       if (b.beginRow()) {
-        b.LED(H(led1), "Position 1",1, sets::Colors::Yellow,sets::Colors::Blue);
+        b.LED(H(led1), lng.POSITION1[lang],1, sets::Colors::Yellow,sets::Colors::Blue);
         b.Switch(kk::switchPosition1, "");
         b.LED(H(led2), "",0, sets::Colors::Yellow,sets::Colors::Blue);
         b.endRow();
       }
 
       if (b.beginRow()) {
-        b.LED(H(led3), "Position 2",1, sets::Colors::Yellow,sets::Colors::Blue);
+        b.LED(H(led3), lng.POSITION2[lang],1, sets::Colors::Yellow,sets::Colors::Blue);
         b.Switch(kk::switchPosition2, "");
         b.LED(H(led4), "",0, sets::Colors::Yellow,sets::Colors::Blue);
         b.endRow();
       }
 
-      b.Select(kk::displayMode, "Display Mode", "Battery Charge;Time to discharge;Robot Eyes");
+      b.Select(kk::displayMode, lng.DISPLAYMODE[lang], "Battery Charge;Time to discharge;Robot Eyes");
       b.endGroup();
   }
+   if (b.beginGroup(lng.LANGUAGE[lang])) {
+    b.Select(kk::language, lng.LANGUAGE[lang], "English;Українська"); 
+    if (b.build.id == kk::language) {
+      lang = (int)db[kk::language];
+      b.reload();
+    }
+
+    }
+    b.endGroup();
 }
 
 void update(sets::Updater u) {
