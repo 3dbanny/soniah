@@ -133,11 +133,14 @@ void checkAndEnterDeepSleep() {
             
             // Повідомлення на дисплей
             display.clearDisplay();
-            display.setCursor(30, 20);
-            display.setTextSize(2);
-            display.println("Sleep");
+            display.drawBitmap(38, 6, sleep_image, 30, 30, 1);
+            display.drawCircle(67, 6, 2, 1);
+            display.drawCircle(76, 17, 2, 1);
+            display.drawCircle(77, 32, 2, 1);
+            display.drawCircle(91, 11, 2, 1);
+
             display.display();
-            delay(1000);
+                    delay(1000);
             
             display.clearDisplay();
             display.display();
@@ -240,6 +243,45 @@ void displayChargeLevel(int info) {
   display.println(info);
   display.display();
 }
+/*графічне відображення заряду батарейки */
+void displayChargeBatteryImage(int info) {
+  
+  static uint32_t tmrCharge = 0;
+  if (millis() - tmrCharge < 1000) return;  // оновлюємо не частіше 1 секунду]
+  tmrCharge = millis();
+
+  int fillSegment[4] = {0,0,0,0};
+
+  if (info > 75) {
+    fillSegment[0] = 1;
+    fillSegment[1] = 1;
+    fillSegment[2] = 1;
+    fillSegment[3] = 1;
+  } else if (info > 50) {
+    fillSegment[0] = 1;
+    fillSegment[1] = 1;
+    fillSegment[2] = 1;
+    fillSegment[3] = 0;
+  } else if (info > 25) {
+    fillSegment[0] = 1;
+    fillSegment[1] = 1;
+    fillSegment[2] = 0;
+    fillSegment[3] = 0;
+  } else {
+    fillSegment[0] = 1;
+    fillSegment[1] = 0;
+    fillSegment[2] = 0;
+    fillSegment[3] = 0;
+  }
+  display.clearDisplay();
+  display.drawRect(34, 5, 52, 32, 1);
+  display.fillRect(37, 8, 10, 26, fillSegment[3]);
+  display.fillRect(49, 8, 10, 26, fillSegment[2]);
+  display.fillRect(61, 8, 10, 26, fillSegment[1]);
+  display.fillRect(73, 8, 10, 26, fillSegment[0]);
+  display.fillRect(30, 13, 5, 16, 1);
+  display.display();  
+}
 /*відображення кількості часу, що залишився до розрядки батареї на OLED дисплеї*/
 void displayEstimationTime(int estimatedHours) {
   static uint32_t tmrEstimation = 0;
@@ -252,7 +294,8 @@ void displayEstimationTime(int estimatedHours) {
   } else {display.setCursor(45,10);
   }
   //display.setCursor(30,10);//перший координат - по горизонталі, другий - по вертикалі 
-  display.println(String(estimatedHours) + "H");
+  display.println(String(estimatedHours));
+  display.drawBitmap(65, 4, image_clock_bits, 30, 32, 1);
   display.display();
 }
 /*вибір рандомного числа*/
@@ -323,7 +366,7 @@ void build(sets::Builder& b) {
         b.endRow();
       }
 
-      b.Select(kk::displayMode, lng.DISPLAYMODE[lang], "Battery Charge;Time to discharge;Robot Eyes");
+      b.Select(kk::displayMode, lng.DISPLAYMODE[lang], "Battery Charge;Time to discharge;Robot Eyes;Battery image");
       b.endGroup();
   }
     if (b.beginMenu(lng.MAINSETTINGS[lang])) {
@@ -518,6 +561,9 @@ void loop() {
       break;
     case 2:
       displayRoboEyesAnimation();
+      break;
+    case 3:
+      displayChargeBatteryImage(data.batteryChargePercent);
       break;
   }
   sett.tick();
