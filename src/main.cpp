@@ -11,7 +11,8 @@ SettingsGyver sett("SONIAH", &db);
 enum kk : size_t {
   wifiSsid,
   wifiPass,
-  brightnessValue,
+  brightnessValuePosition1,
+  brightnessValuePosition2,
   switchPosition1,
   switchPosition2,
   displayMode,
@@ -54,8 +55,11 @@ struct Lang {
   const char* BATTERY[2] = {"Battery charge", "Заряд батареї"};
   const char* LIGHTSETTINGS[2] = {"Flashlight", "Ліхтарик"};
   const char* BRIGHTNESS[2] = {"Brightness slider", "Яскравість"};
+  const char* SWITCHER1[2] = {"Switcher 1", "Перемикач 1"};
   const char* POSITION1[2] = {"Position 1", "Позиція перемикача 1"};
+  const char* SWITCHER2[2] = {"Switcher 2", "Перемикач 2"};
   const char* POSITION2[2] = {"Position 2", "Позиція перемикача 2"};
+  const char* SCREEN[2] = {"Flashlight screen", "Екран ліхтарика"};
   const char* DISPLAYMODE[2] = {"Display mode", "Інформація на екрані"};
   const char* MAINSETTINGS[2] = {"Main settings", "Основні налаштування"};
   const char* WIFICOLORSETTINGS[2] = {"WIFI & theme settings", "Налаштування WIFI та теми"};
@@ -330,14 +334,30 @@ void displayRoboEyesAnimation() {
       }
   }
 }
-/*мапінг режимів перемикача та кольорів ліхтаря*/
+/*мапінг режимів перемикача та кольорів ліхтаря + регулювання яскравості*/
 void manageSwitcherPosition() {
-  if (digitalRead(positionTwopin) == LOW) {
+  static int lastBrightnessPosition1 = -1;
+  static int lastBrightnessPosition2 = -1;
+  static int lastSwitcherState = -1;
+
+  bool currentState = digitalRead(positionTwopin);
+  bool switcherChanged = (currentState != lastSwitcherState);
+  lastSwitcherState = currentState;  
+
+  if (currentState == LOW) {
       bindPositionLight(db[kk::switchPosition1]);
-  }
-  if (digitalRead(positionTwopin) == HIGH) {
-      bindPositionLight(db[kk::switchPosition2]);
+      if ((int)db[kk::brightnessValuePosition1] != lastBrightnessPosition1 || switcherChanged) {
+          lastBrightnessPosition1 = (int)db[kk::brightnessValuePosition1];
+          adjustBrightness(lastBrightnessPosition1);
+      }
   } 
+  if (currentState == HIGH) {
+      bindPositionLight(db[kk::switchPosition2]);
+      if ((int)db[kk::brightnessValuePosition2] != lastBrightnessPosition2 || switcherChanged) {
+          lastBrightnessPosition2 = (int)db[kk::brightnessValuePosition2];
+          adjustBrightness(lastBrightnessPosition2);
+      }
+  }
 }
 /*----------------------------------------------------------------------------*/
 /*=======================================*/
@@ -350,48 +370,55 @@ void build(sets::Builder& b) {
   b.Image(H(img), "", "/logo.avif");
   b.LinearGauge(H(batCharge), lng.BATTERY[lang], 0, 100, "", data.batteryChargePercent,batteryWidgetColorChange(data.batteryChargePercent));
   
-  if (b.beginGroup(lng.LIGHTSETTINGS[lang])) {
-      b.Slider(kk::brightnessValue, lng.BRIGHTNESS[lang], 0, 100,1);
+  if (b.beginGroup(lng.SWITCHER1[lang])) {
+      b.Slider(kk::brightnessValuePosition1, lng.BRIGHTNESS[lang], 0, 100,1);
       if (b.beginRow()) {
         b.LED(H(led1), lng.POSITION1[lang],1, sets::Colors::Yellow,sets::Colors::Blue);
         b.Switch(kk::switchPosition1, "");
         b.LED(H(led2), "",0, sets::Colors::Yellow,sets::Colors::Blue);
         b.endRow();
       }
-
-      if (b.beginRow()) {
-        b.LED(H(led3), lng.POSITION2[lang],1, sets::Colors::Yellow,sets::Colors::Blue);
-        b.Switch(kk::switchPosition2, "");
-        b.LED(H(led4), "",0, sets::Colors::Yellow,sets::Colors::Blue);
-        b.endRow();
-      }
-
-      b.Select(kk::displayMode, lng.DISPLAYMODE[lang], "Battery Charge;Time to discharge;Robot Eyes;Battery image");
       b.endGroup();
-  }
-    if (b.beginMenu(lng.MAINSETTINGS[lang])) {
-      if (b.beginGroup(lng.WIFICOLORSETTINGS[lang])) {
-        b.Input(kk::wifiSsid, lng.SSID[lang]);
-        b.Pass(kk::wifiPass, lng.PASSWORD[lang]);
-        b.Select(kk::themeColor, lng.THEMECOLOR[lang], "Green;Red;Blue;Yellow;Mint;Orange;Pink;Aqua;Violet");  // ← додати
-        if (b.Button(kk::apply, lng.SAVEBUTTON[lang])) {
-          db.update();
-          ESP.restart();
-        
-        }
-      b.endGroup();
-      }
-      if (b.beginGroup(lng.LANGUAGE[lang])) {
-        b.Select(kk::language, lng.LANGUAGE[lang], "English;Українська"); 
-        if (b.build.id == kk::language) {
-          lang = (int)db[kk::language];
-          b.reload();
-       }
-
-      }
-      b.endGroup();
-    b.endMenu();  // не забываем завершить меню
     }
+
+  if (b.beginGroup(lng.SWITCHER2[lang])) {
+    b.Slider(kk::brightnessValuePosition2, lng.BRIGHTNESS[lang], 0, 100,1);
+    if (b.beginRow()) {
+      b.LED(H(led3), lng.POSITION2[lang],1, sets::Colors::Yellow,sets::Colors::Blue);
+      b.Switch(kk::switchPosition2, "");
+      b.LED(H(led4), "",0, sets::Colors::Yellow,sets::Colors::Blue);
+      b.endRow();
+    }
+  b.endGroup(); 
+  }
+  if (b.beginGroup(lng.SCREEN[lang])) {
+  b.Select(kk::displayMode, lng.DISPLAYMODE[lang], "Battery Charge;Time to discharge;Robot Eyes;Battery image");
+  b.endGroup(); 
+  }
+
+  if (b.beginMenu(lng.MAINSETTINGS[lang])) {
+    if (b.beginGroup(lng.WIFICOLORSETTINGS[lang])) {
+      b.Input(kk::wifiSsid, lng.SSID[lang]);
+      b.Pass(kk::wifiPass, lng.PASSWORD[lang]);
+      b.Select(kk::themeColor, lng.THEMECOLOR[lang], "Green;Red;Blue;Yellow;Mint;Orange;Pink;Aqua;Violet");  // ← додати
+      if (b.Button(kk::apply, lng.SAVEBUTTON[lang])) {
+        db.update();
+        ESP.restart();
+        
+      }
+    b.endGroup();
+    }
+    if (b.beginGroup(lng.LANGUAGE[lang])) {
+      b.Select(kk::language, lng.LANGUAGE[lang], "English;Українська"); 
+      if (b.build.id == kk::language) {
+        lang = (int)db[kk::language];
+        b.reload();
+      }
+
+    }
+    b.endGroup();
+  b.endMenu();  // не забываем завершить меню
+  }
 }
 
 void update(sets::Updater u) {
@@ -451,7 +478,8 @@ void setup() {
   // ініціювання БД початковими даними
     db.init(kk::wifiSsid, "");
     db.init(kk::wifiPass, "");
-    db.init(kk::brightnessValue, 100);
+    db.init(kk::brightnessValuePosition1, 100);
+    db.init(kk::brightnessValuePosition2, 100);
     db.init(kk::switchPosition1, 0);
     db.init(kk::switchPosition2, 1);
     db.init(kk::displayMode, 2);
@@ -541,14 +569,10 @@ void loop() {
   //data.batteryChargePercent = random(0,101); //тестове значення заряду батареї
   tmrBattery = millis();
   }
-  /*======================switcher position manager===================*/
+  /*======================switcher position manager + BRIGHTNESS===================*/
   manageSwitcherPosition();
-  /*========================BRIGHTNESS=================================*/
-  int lastBrightnessValue = 0;
-  if (db[kk::brightnessValue] != lastBrightnessValue) {
-    lastBrightnessValue = db[kk::brightnessValue];
-    adjustBrightness(db[kk::brightnessValue]);
-  }
+
+
   /*========================robot eyes=================================*/
   switch ((int)db[kk::displayMode]){
     /*======================== display percent of battery charge=================================*/
@@ -557,7 +581,9 @@ void loop() {
       break;
     /*========================display quantity hours to battery discharge=================================*/
     case 1:
-      displayEstimationTime(estimationTimeHours(data.batteryChargePercent,db[kk::brightnessValue]));
+      displayEstimationTime(estimationTimeHours(data.batteryChargePercent,digitalRead(positionTwopin) == LOW ? 
+                                                                          (int)db[kk::brightnessValuePosition1] : 
+                                                                          (int)db[kk::brightnessValuePosition2]));
       break;
     case 2:
       displayRoboEyesAnimation();
