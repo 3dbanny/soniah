@@ -367,8 +367,10 @@ void manageSwitcherPosition() {
 /*створення блоків веб  інтерфейсу*/
 void build(sets::Builder& b) {
   int lang = (int)db[kk::language];
+  b.HTML("", "<style>span[style*='margin-top: 18px']{display:none!important;}</style>");
   b.Image(H(img), "", "/logo.avif");
   b.LinearGauge(H(batCharge), lng.BATTERY[lang], 0, 100, "", data.batteryChargePercent,batteryWidgetColorChange(data.batteryChargePercent));
+  
   
   if (b.beginGroup(lng.SWITCHER1[lang])) {
       b.Slider(kk::brightnessValuePosition1, lng.BRIGHTNESS[lang], 0, 100,1);
@@ -445,8 +447,7 @@ void setup() {
   WiFi.mode(WIFI_AP_STA);
   // ======== SETTINGS ========
   sett.begin(true,"soniah"); // базу даних підключаємо до підключення до точки
-  sett.setVersion("1.0.0");
-  sett.setProjectInfo("SONIAH 🌻 - smart flashlight");
+  sett.setVersion("1.2");
   sett.onBuild(build);
   sett.onUpdate(update);
   // ======== DATABASE ========
@@ -544,7 +545,7 @@ if (db[kk::wifiSsid].length()) {
   display.display();
   
  // перезавантажити сторінку браузера
-  sett.reload(true);
+  
 } 
 
 
@@ -561,6 +562,16 @@ void loop() {
         }
     }
   checkAndEnterDeepSleep();
+  /*одноразове перезавантаження сторінки сайту*/
+  static bool reloadDone = false;
+  static uint32_t reloadTimer = 0;
+  if (!reloadDone) {
+    if (reloadTimer == 0) reloadTimer = millis();
+    if (millis() - reloadTimer > 3000) {  // чекаємо 3 секунди
+      sett.reload(true);
+      reloadDone = true;
+    }
+  }
   /*======================battery charge manager===================*/
   static uint32_t tmrBattery;
   const unsigned long BATTERY_CHARGE_INTERVAL = 5 * 60 * 1000; // інтервал оновлення заряду батареї в мілісекундах (5 хвилин)
