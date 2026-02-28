@@ -402,6 +402,7 @@ void build(sets::Builder& b) {
     if (b.beginGroup(lng.WIFICOLORSETTINGS[lang])) {
       b.Input(kk::wifiSsid, lng.SSID[lang]);
       b.Pass(kk::wifiPass, lng.PASSWORD[lang]);
+      b.Label("IP", WiFi.localIP().toString());
       b.Select(kk::themeColor, lng.THEMECOLOR[lang], "Green;Red;Blue;Yellow;Mint;Orange;Pink;Aqua;Violet");  // ← додати
       if (b.Button(kk::apply, lng.SAVEBUTTON[lang])) {
         db.update();
