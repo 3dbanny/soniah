@@ -271,8 +271,13 @@ void displayChargeBatteryImage(int info) {
     fillSegment[1] = 1;
     fillSegment[2] = 0;
     fillSegment[3] = 0;
-  } else {
+  } else if (info > 25){
     fillSegment[0] = 1;
+    fillSegment[1] = 0;
+    fillSegment[2] = 0;
+    fillSegment[3] = 0;
+  }else {
+    fillSegment[0] = 0;
     fillSegment[1] = 0;
     fillSegment[2] = 0;
     fillSegment[3] = 0;
