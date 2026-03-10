@@ -6,6 +6,7 @@
 #include <LittleFS.h>
 GyverDBFile db(&LittleFS, "/data.db");
 #include <SettingsGyver.h>
+#include "driver/gpio.h"
 SettingsGyver sett("SONIAH", &db);
 /*налаштування ключів БД*/
 enum kk : size_t {
@@ -18,6 +19,7 @@ enum kk : size_t {
   displayMode,
   themeColor,
   language,
+  TimerSlider,
   apply
 };
 /*глобальні змінні без потреби у постійному зберігання в енергонезалежній пам'яті*/
@@ -25,8 +27,15 @@ struct Data {
   int batteryChargePercent = 0;
   bool wifiConnecting = false;
   uint32_t wifiConnectStart = 0;
+  bool timerActive = false;
+  uint32_t timerEndMillis = 0;
+  uint32_t timerDisplay = 0;
+
 };
 Data data;
+
+RTC_DATA_ATTR bool sleepByTimer = false;
+
 /*структура конфігурації розміру очей робота*/
 struct RoboEyesConfig {
   const uint8_t EYE_WIDTH = 24;
@@ -78,6 +87,7 @@ const int PWM_CHANNEL = 0;
 const int PWM_FREQ = 2000;        // 2 kHz - максимум для LDO6AJSA
 const int PWM_RESOLUTION = 8; 
 
+
 /*бібліотеки для роботи олед дисплея*/
 #include <Wire.h>
 #include <Adafruit_GFX.h>
@@ -105,65 +115,76 @@ RoboEyes<Adafruit_SSD1306> roboEyes(display);
 //пін для керування яскравістю світла
 #define brightnessPin 0 //додати номер піна
 /*=========================ФУНКЦІЇ===========================*/
-/*перевірка і вхід у режим глибокого сну з debounce*/
 /*перевірка і вхід у режим глибокого сну*/
-void checkAndEnterDeepSleep() {
-    static uint32_t offTimer = 0;
-    const unsigned long DEBOUNCE_TIME = 5000;  // 5000 мс затримка
-    
-    // Якщо обидва піни LOW - перемикач в OFF
-    if (digitalRead(positionOnepin) == LOW && digitalRead(positionTwopin) == LOW) {
-        if (offTimer == 0) {
-            offTimer = millis();
-        }
-        
-        // Якщо OFF стан тримається 500 мс - йдемо спати
-        if (millis() - offTimer >= DEBOUNCE_TIME) {
-            Serial.println("=== ENTERING DEEP SLEEP ===");
-            Serial.print("positionOnepin: ");
-            Serial.println(digitalRead(positionOnepin));
-            Serial.print("positionTwopin: ");
-            Serial.println(digitalRead(positionTwopin));
-            
-            // Вимикаємо світлодіоди і PWM
-            digitalWrite(blueLightPin, LOW);
-            digitalWrite(whiteLightPin, LOW);
-            ledcWrite(PWM_CHANNEL, 0);
-            
-            // Вимикаємо WiFi
-            WiFi.disconnect(true);
-            WiFi.mode(WIFI_OFF);
-            delay(100);
-            
-            // Повідомлення на дисплей
-            display.clearDisplay();
-            display.drawBitmap(38, 6, sleep_image, 30, 30, 1);
-            display.drawCircle(67, 6, 2, 1);
-            display.drawCircle(76, 17, 2, 1);
-            display.drawCircle(77, 32, 2, 1);
-            display.drawCircle(91, 11, 2, 1);
+void enterDeepSleep(bool byTimer) {
+  digitalWrite(blueLightPin, LOW);
+  digitalWrite(whiteLightPin, LOW);
+  ledcWrite(PWM_CHANNEL, 0);
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+  delay(100);
 
-            display.display();
-                    delay(1000);
-            
-            display.clearDisplay();
-            display.display();
-            
-            // Налаштування wake-up по HIGH рівню на будь-якому з пінів
-            esp_deep_sleep_enable_gpio_wakeup(1ULL << positionOnepin | 1ULL << positionTwopin, ESP_GPIO_WAKEUP_GPIO_HIGH);
-            
-            Serial.println("Wake-up configured for GPIO1 or GPIO2");
-            Serial.println("Going to sleep NOW...");
-            Serial.flush();
-            delay(100);
-            
-            // DEEP SLEEP
-            esp_deep_sleep_start();
-        }
-    } else {
-        // Скидаємо таймер якщо хоч один пін HIGH
-        offTimer = 0;
+  display.clearDisplay();
+  display.drawBitmap(38, 6, sleep_image, 30, 30, 1);
+  display.drawCircle(67, 6, 2, 1);
+  display.drawCircle(76, 17, 2, 1);
+  display.drawCircle(77, 32, 2, 1);
+  display.drawCircle(91, 11, 2, 1);
+  display.display();
+  delay(1000);
+  display.clearDisplay();
+  display.display();
+
+  if (byTimer) {
+  if (digitalRead(positionOnepin) == HIGH) {
+    gpio_pullup_dis(GPIO_NUM_1);
+    gpio_pulldown_en(GPIO_NUM_1);
+    gpio_hold_en(GPIO_NUM_1);
+    esp_deep_sleep_enable_gpio_wakeup(
+      1ULL << positionOnepin,
+      ESP_GPIO_WAKEUP_GPIO_LOW
+    );
+  } else {
+    gpio_pullup_dis(GPIO_NUM_2);
+    gpio_pulldown_en(GPIO_NUM_2);
+    gpio_hold_en(GPIO_NUM_2);
+    esp_deep_sleep_enable_gpio_wakeup(
+      1ULL << positionTwopin,
+      ESP_GPIO_WAKEUP_GPIO_LOW
+    );
+  }
+  } else {
+    // звичайний режим - засинаємо по HIGH на обох пінах
+    esp_deep_sleep_enable_gpio_wakeup(
+      1ULL << positionOnepin | 1ULL << positionTwopin,
+      ESP_GPIO_WAKEUP_GPIO_HIGH
+    );
+  }
+  esp_deep_sleep_start();
+}
+void checkButtonsForDeepSleep() {
+  static uint32_t offTimer = 0;
+  const unsigned long DEBOUNCE_TIME = 5000;
+
+  if (digitalRead(positionOnepin) == LOW && digitalRead(positionTwopin) == LOW) {
+    if (offTimer == 0) offTimer = millis();
+    if (millis() - offTimer >= DEBOUNCE_TIME) {
+      enterDeepSleep(false);
     }
+  } else {
+    offTimer = 0;
+  }
+}
+/*процедура таймеру*/
+uint32_t manageTimer() {
+  if (!data.timerActive) return 0;
+
+  uint32_t now = millis();
+  if (now >= data.timerEndMillis) {
+    data.timerActive = false;
+    return 0;
+  }
+  return (data.timerEndMillis - now) / 1000;
 }
 /*визначення заряду батареї у відсотках*/
 int batCharge(uint8_t pin) {
@@ -247,7 +268,7 @@ void displayChargeLevel(int info) {
   display.println(info);
   display.display();
 }
-/*графічне відображення заряду батарейки */
+/*графічне відображення заряду батарейки на OLED дисплеї*/
 void displayChargeBatteryImage(int info) {
   
   static uint32_t tmrCharge = 0;
@@ -339,6 +360,23 @@ void displayRoboEyesAnimation() {
       }
   }
 }
+/*відображення таймера на OLED дисплеї*/
+void displayTimerCountdown(uint32_t remainingSeconds) {
+  static uint32_t tmrDisplay = 0;
+  if (millis() - tmrDisplay < 1000) return;
+  tmrDisplay = millis();
+
+  display.clearDisplay();
+  display.setTextSize(2);  // ← зменшуємо розмір
+  int m = remainingSeconds / 60;
+  int s = remainingSeconds % 60;
+  String timeStr = (m < 10 ? "0" : "") + String(m) + ":" +
+                   (s < 10 ? "0" : "") + String(s);
+  display.setCursor(28, 10);
+  display.println(timeStr);
+  display.display();
+  display.setTextSize(3);  // ← повертаємо назад
+}
 /*мапінг режимів перемикача та кольорів ліхтаря + регулювання яскравості*/
 void manageSwitcherPosition() {
   static int lastBrightnessPosition1 = -1;
@@ -402,7 +440,27 @@ void build(sets::Builder& b) {
   b.Select(kk::displayMode, lng.DISPLAYMODE[lang], "Battery Charge;Time to discharge;Robot Eyes;Battery image");
   b.endGroup(); 
   }
+  if (b.beginMenu("Timer")) {
+    if (b.beginGroup("Timer")) {
+    b.Time(H(timerDisplay), "Remaining");
+    b.Slider(kk::TimerSlider, "Set Time (min)", 0, 59, 1);
 
+    if (b.beginButtons()) {
+      if (b.Button(H(btnStart), "Start", sets::Colors::Green)) {
+        data.timerActive = true;
+        data.timerEndMillis = millis() + (int)db[kk::TimerSlider] * 60 * 1000UL;
+      }
+      if (b.Button(H(btnStop), "Stop", sets::Colors::Red)) {
+        data.timerActive = false;
+        data.timerDisplay = 0;
+        data.timerEndMillis = 0; 
+      }
+      b.endButtons();
+    }
+  b.endGroup();
+  }
+b.endMenu();
+}
   if (b.beginMenu(lng.MAINSETTINGS[lang])) {
     if (b.beginGroup(lng.WIFICOLORSETTINGS[lang])) {
       b.Input(kk::wifiSsid, lng.SSID[lang]);
@@ -425,22 +483,38 @@ void build(sets::Builder& b) {
 
     }
     b.endGroup();
-  b.endMenu();  // не забываем завершить меню
+  b.endMenu();  
   }
 }
 
 void update(sets::Updater u) {
   u.update(H(batCharge), data.batteryChargePercent);
   u.updateColor(H(batCharge), batteryWidgetColorChange(data.batteryChargePercent));
+  /*data.timerDisplay = manageTimer();*/
+  u.update(H(timerDisplay), data.timerDisplay);
 }
 
 void setup() {
   Serial.begin(115200); // 115200 baud rate
+
+  gpio_hold_dis(GPIO_NUM_1);
+  gpio_hold_dis(GPIO_NUM_2);  
+  
   pinMode(voltmeterPin, INPUT);
   pinMode(positionOnepin, INPUT_PULLDOWN);
   pinMode(positionTwopin, INPUT_PULLDOWN);
   pinMode(blueLightPin, OUTPUT);
   pinMode(whiteLightPin, OUTPUT);
+  
+  if (sleepByTimer) {
+  sleepByTimer = false;
+  esp_deep_sleep_enable_gpio_wakeup(
+    1ULL << positionOnepin | 1ULL << positionTwopin,
+    ESP_GPIO_WAKEUP_GPIO_HIGH
+  );
+  esp_deep_sleep_start();
+  }
+  
 
   ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);
   ledcAttachPin(brightnessPin, PWM_CHANNEL);
@@ -492,6 +566,7 @@ void setup() {
     db.init(kk::displayMode, 2);
     db.init(kk::themeColor, 0);
     db.init(kk::language, 0); // 0 = English за замовчуванням
+    db.init(kk::TimerSlider, 0);
 
 
   //налаштування теми
@@ -516,15 +591,12 @@ if (db[kk::wifiSsid].length()) {
     data.wifiConnectStart = millis();
 }
 
-
-
   /*=======================SETUP OLED========================================*/
   Wire.begin(SdaPin, SclPin);
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) {
     Serial.println(F("SSD1306 allocation failed"));
     for(;;);
   }
-
   display.setRotation(2);
   display.setTextSize(3);
   display.setTextColor(SSD1306_WHITE);
@@ -533,8 +605,6 @@ if (db[kk::wifiSsid].length()) {
   // Define some automated eyes behaviour
   roboEyes.setAutoblinker(ON, 3, 2); // Start auto blinker animation cycle -> bool active, int interval, int variation -> turn on/off, set interval between each blink in full seconds, set range for random interval variation in full seconds
   // Define eye shapes, all values in pixels
-  
-
   roboEyes.setWidth(roboeyesconfig.EYE_WIDTH, roboeyesconfig.EYE_WIDTH);
   roboEyes.setHeight(roboeyesconfig.EYE_HEIGHT, roboeyesconfig.EYE_HEIGHT);
   roboEyes.setBorderradius(roboeyesconfig.BORDER_RADIUS, roboeyesconfig.BORDER_RADIUS);
@@ -542,16 +612,12 @@ if (db[kk::wifiSsid].length()) {
   //roboEyes.setHFlicker(ON, 2); // horizontal flickering effect -> bool active, int intensity (1-5)
   roboEyes.setPosition(NE); // cardinal directions, can be N, NE, E, SE, S, SW, W, NW, DEFAULT (default = horizontally and vertically centered)
   //вітальна фраза на олед дисплеї
-  
   display.clearDisplay();
   display.setTextSize(3);
   display.setTextColor(SSD1306_WHITE);
   display.setCursor(45,10);//перший координат - по горизонталі, другий - по вертикалі 
   display.println("Hi");
   display.display();
-  
- // перезавантажити сторінку браузера
-  
 } 
 
 
@@ -567,7 +633,7 @@ void loop() {
             
         }
     }
-  checkAndEnterDeepSleep();
+  checkButtonsForDeepSleep();
   /*одноразове перезавантаження сторінки сайту*/
   static bool reloadDone = false;
   static uint32_t reloadTimer = 0;
@@ -589,26 +655,28 @@ void loop() {
   /*======================switcher position manager + BRIGHTNESS===================*/
   manageSwitcherPosition();
 
-
-  /*========================robot eyes=================================*/
-  switch ((int)db[kk::displayMode]){
-    /*======================== display percent of battery charge=================================*/
-    case 0:
-      displayChargeLevel(data.batteryChargePercent);
-      break;
-    /*========================display quantity hours to battery discharge=================================*/
-    case 1:
-      displayEstimationTime(estimationTimeHours(data.batteryChargePercent,digitalRead(positionTwopin) == LOW ? 
-                                                                          (int)db[kk::brightnessValuePosition1] : 
-                                                                          (int)db[kk::brightnessValuePosition2]));
-      break;
-    case 2:
-      displayRoboEyesAnimation();
-      break;
-    case 3:
-      displayChargeBatteryImage(data.batteryChargePercent);
-      break;
+/*вибір режиму відображення на OLED дисплеї*/
+  if (data.timerActive) {
+    data.timerDisplay = manageTimer();
+    displayTimerCountdown(data.timerDisplay);
+} else {
+  switch ((int)db[kk::displayMode]) {
+    case 0: displayChargeLevel(data.batteryChargePercent); break;
+    case 1: displayEstimationTime(estimationTimeHours(
+              data.batteryChargePercent,
+              digitalRead(positionTwopin) == LOW ?
+                (int)db[kk::brightnessValuePosition1] :
+                (int)db[kk::brightnessValuePosition2])); break;
+    case 2: displayRoboEyesAnimation(); break;
+    case 3: displayChargeBatteryImage(data.batteryChargePercent); break;
   }
+}
+
+/*перевірка завершення таймера*/
+if (!data.timerActive && data.timerDisplay == 0 && data.timerEndMillis > 0) {
+  enterDeepSleep(true);
+}
+
   sett.tick();
 }
 
