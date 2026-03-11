@@ -70,6 +70,11 @@ struct Lang {
   const char* POSITION2[2] = {"Position 2", "Позиція перемикача 2"};
   const char* SCREEN[2] = {"Flashlight screen", "Екран ліхтарика"};
   const char* DISPLAYMODE[2] = {"Display mode", "Інформація на екрані"};
+  const char* TIMER[2] = {"Timer", "Таймер"};
+  const char* REMINING[2] = {"Remaining time", "Час, що залишився"};
+  const char* SETTIME[2] = {"Set time(min)", "Встановити час(хв)"};
+  const char* START[2] = {"Start", "Старт"};
+  const char* STOP[2] = {"Stop", "Стоп"};
   const char* MAINSETTINGS[2] = {"Main settings", "Основні налаштування"};
   const char* WIFICOLORSETTINGS[2] = {"WIFI & theme settings", "Налаштування WIFI та теми"};
   const char* WIFI[2] = {"WiFi", "WiFi"};
@@ -440,17 +445,17 @@ void build(sets::Builder& b) {
   b.Select(kk::displayMode, lng.DISPLAYMODE[lang], "Battery Charge;Time to discharge;Robot Eyes;Battery image");
   b.endGroup(); 
   }
-  if (b.beginMenu("Timer")) {
-    if (b.beginGroup("Timer")) {
-    b.Time(H(timerDisplay), "Remaining");
-    b.Slider(kk::TimerSlider, "Set Time (min)", 0, 59, 1);
+  if (b.beginMenu(lng.TIMER[lang])) {
+    if (b.beginGroup(lng.TIMER[lang])) {
+    b.Time(H(timerDisplay), lng.REMINING[lang]);
+    b.Slider(kk::TimerSlider, lng.SETTIME[lang], 0, 59, 1);
 
     if (b.beginButtons()) {
-      if (b.Button(H(btnStart), "Start", sets::Colors::Green)) {
+      if (b.Button(H(btnStart), lng.START[lang])) {
         data.timerActive = true;
         data.timerEndMillis = millis() + (int)db[kk::TimerSlider] * 60 * 1000UL;
       }
-      if (b.Button(H(btnStop), "Stop", sets::Colors::Red)) {
+      if (b.Button(H(btnStop), lng.STOP[lang], sets::Colors::Red)) {
         data.timerActive = false;
         data.timerDisplay = 0;
         data.timerEndMillis = 0; 
