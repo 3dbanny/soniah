@@ -115,14 +115,14 @@ RoboEyes<Adafruit_SSD1306> roboEyes(display);
 #define positionOnepin 1 //додати номер піна 
 #define positionTwopin 2 //додати номер піна 
 //піни для керування кольором світла
-#define blueLightPin 4 //додати номер піна
+#define redLightPin 4 //додати номер піна
 #define whiteLightPin 7 //додати номер піна
 //пін для керування яскравістю світла
 #define brightnessPin 0 //додати номер піна
 /*=========================ФУНКЦІЇ===========================*/
 /*перевірка і вхід у режим глибокого сну*/
 void enterDeepSleep(bool byTimer) {
-  digitalWrite(blueLightPin, LOW);
+  digitalWrite(redLightPin, LOW);
   digitalWrite(whiteLightPin, LOW);
   ledcWrite(PWM_CHANNEL, 0);
   WiFi.disconnect(true);
@@ -233,11 +233,11 @@ int estimationTimeHours(int chargePercent,int brightnessLevel) {
 /*керування вибором кольору світла*/
 void bindPositionLight(int position) {
   if (position == 0) {
-      digitalWrite(blueLightPin, HIGH);
+      digitalWrite(redLightPin, HIGH);
       digitalWrite(whiteLightPin, LOW);
   }
   if (position == 1) {
-      digitalWrite(blueLightPin, LOW);
+      digitalWrite(redLightPin, LOW);
       digitalWrite(whiteLightPin, HIGH);
   }
 }
@@ -423,9 +423,9 @@ void build(sets::Builder& b) {
   if (b.beginGroup(lng.SWITCHER1[lang])) {
       b.Slider(kk::brightnessValuePosition1, lng.BRIGHTNESS[lang], 0, 100,1);
       if (b.beginRow()) {
-        b.LED(H(led1), lng.POSITION1[lang],1, sets::Colors::Yellow,sets::Colors::Blue);
+        b.LED(H(led1), lng.POSITION1[lang],1, sets::Colors::Yellow,sets::Colors::Red);
         b.Switch(kk::switchPosition1, "");
-        b.LED(H(led2), "",0, sets::Colors::Yellow,sets::Colors::Blue);
+        b.LED(H(led2), "",0, sets::Colors::Yellow,sets::Colors::Red);
         b.endRow();
       }
       b.endGroup();
@@ -434,9 +434,9 @@ void build(sets::Builder& b) {
   if (b.beginGroup(lng.SWITCHER2[lang])) {
     b.Slider(kk::brightnessValuePosition2, lng.BRIGHTNESS[lang], 0, 100,1);
     if (b.beginRow()) {
-      b.LED(H(led3), lng.POSITION2[lang],1, sets::Colors::Yellow,sets::Colors::Blue);
+      b.LED(H(led3), lng.POSITION2[lang],1, sets::Colors::Yellow,sets::Colors::Red);
       b.Switch(kk::switchPosition2, "");
-      b.LED(H(led4), "",0, sets::Colors::Yellow,sets::Colors::Blue);
+      b.LED(H(led4), "",0, sets::Colors::Yellow,sets::Colors::Red);
       b.endRow();
     }
   b.endGroup(); 
@@ -508,7 +508,7 @@ void setup() {
   pinMode(voltmeterPin, INPUT);
   pinMode(positionOnepin, INPUT_PULLDOWN);
   pinMode(positionTwopin, INPUT_PULLDOWN);
-  pinMode(blueLightPin, OUTPUT);
+  pinMode(redLightPin, OUTPUT);
   pinMode(whiteLightPin, OUTPUT);
   
   if (sleepByTimer) {
@@ -523,8 +523,8 @@ void setup() {
 
   ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);
   ledcAttachPin(brightnessPin, PWM_CHANNEL);
-  //вимкнути файловий менеджер 
-  sett.config.useFS = false;
+  //увімкнути/вимкнути файловий менеджер 
+  sett.config.useFS = true;
 
   data.batteryChargePercent = batCharge(voltmeterPin);// перший раз отримуэмо значення заряду батареї. Наступний раз буде через 5 хвилин
   // ======== WIFI ========
@@ -532,7 +532,7 @@ void setup() {
   WiFi.mode(WIFI_AP_STA);
   // ======== SETTINGS ========
   sett.begin(true,"soniah"); // базу даних підключаємо до підключення до точки
-  sett.setVersion("1.2");
+  sett.setVersion("1.25");
   sett.onBuild(build);
   sett.onUpdate(update);
   // ======== DATABASE ========
