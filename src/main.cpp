@@ -1,124 +1,139 @@
 #include <Arduino.h>
-#include "images.h"
-#include <esp_sleep.h>
-/*налаштування веб інтерфейсу*/
+
+// ===== WEB INTERFACE =====
 #include <GyverDBFile.h>
 #include <LittleFS.h>
-GyverDBFile db(&LittleFS, "/data.db");
 #include <SettingsGyver.h>
+
+// ===== HARDWARE DRIVERS =====
+#include <esp_sleep.h>
 #include "driver/gpio.h"
-SettingsGyver sett("SONIAH", &db);
-/*налаштування ключів БД*/
-enum kk : size_t {
-  wifiSsid,
-  wifiPass,
-  brightnessValuePosition1,
-  brightnessValuePosition2,
-  switchPosition1,
-  switchPosition2,
-  displayMode,
-  themeColor,
-  language,
-  TimerSlider,
-  apply
-};
-/*глобальні змінні без потреби у постійному зберігання в енергонезалежній пам'яті*/
-struct Data {
-  int batteryChargePercent = 0;
-  bool wifiConnecting = false;
-  uint32_t wifiConnectStart = 0;
-  bool timerActive = false;
-  uint32_t timerEndMillis = 0;
-  uint32_t timerDisplay = 0;
-
-};
-Data data;
-
-RTC_DATA_ATTR bool sleepByTimer = false;
-
-/*структура конфігурації розміру очей робота*/
-struct RoboEyesConfig {
-  const uint8_t EYE_WIDTH = 24;
-  const uint8_t EYE_HEIGHT = 24;
-  const uint8_t BORDER_RADIUS = 8;
-  const uint8_t SPACE_BETWEEN = 4;
-};
-
-  RoboEyesConfig roboeyesconfig;
-/*структура для управління живленням*/
-struct PowerManagement {
-  const float ADC_VOLTAGE_MULTIPLIER = 3.3 * 1.8 / 4095.0;
-  const float BATTERY_MAX_VOLTAGE = 4.1; // максимальна напруга батареї
-  const float BATTERY_MIN_VOLTAGE = 3.2; // мінімальна напруга батар
-  const int DIODE_DROP_MAH = 50; // падіння напруги на діодах в мА
-  const int BATTERY_CAPACITY_MAH = 2800; // ємність батареї в мАг
-  const int ESP32_CONSUMPTION_MAH = 80; // середнє споживання ESP32 в мА
-  const int MAX_LIGHT_CONSUMPTION_MAH = 200; // максимальне споживання ліхтаря в мА
-  const int BRIGHTNESS_MULTIPLIER = 255;
-};
-  PowerManagement powerManagement;
-
-/*структура для локалізації - ця частина ще в розробці*/ 
-struct Lang {
-  // Вказуємо розмір [2], оскільки у нас 2 мови
-  const char* BATTERY[2] = {"Battery charge", "Заряд батареї"};
-  const char* LIGHTSETTINGS[2] = {"Flashlight", "Ліхтарик"};
-  const char* BRIGHTNESS[2] = {"Brightness slider", "Яскравість"};
-  const char* SWITCHER1[2] = {"Switcher 1", "Перемикач 1"};
-  const char* POSITION1[2] = {"Position 1", "Позиція перемикача 1"};
-  const char* SWITCHER2[2] = {"Switcher 2", "Перемикач 2"};
-  const char* POSITION2[2] = {"Position 2", "Позиція перемикача 2"};
-  const char* SCREEN[2] = {"Flashlight screen", "Екран ліхтарика"};
-  const char* DISPLAYMODE[2] = {"Display mode", "Інформація на екрані"};
-  const char* TIMER[2] = {"Timer", "Таймер"};
-  const char* REMINING[2] = {"Remaining time", "Час, що залишився"};
-  const char* SETTIME[2] = {"Set time(min)", "Встановити час(хв)"};
-  const char* START[2] = {"Start", "Старт"};
-  const char* STOP[2] = {"Stop", "Стоп"};
-  const char* MAINSETTINGS[2] = {"Main settings", "Основні налаштування"};
-  const char* WIFICOLORSETTINGS[2] = {"WIFI & theme settings", "Налаштування WIFI та теми"};
-  const char* WIFI[2] = {"WiFi", "WiFi"};
-  const char* SSID[2] = {"SSID", "Назва мережі"};
-  const char* PASSWORD[2] = {"Password", "Пароль"};
-  const char* THEMECOLOR[2] = {"Theme color", "Колір теми"};
-  const char* LANGUAGE[2] = {"Language", "Мова"};
-  const char* SAVEBUTTON[2] = {"Save & restart", "Зберегти та перезавантажити"};
-
-};
-
-Lang lng;
-
-const int PWM_CHANNEL = 0;
-const int PWM_FREQ = 2000;        // 2 kHz - максимум для LDO6AJSA
-const int PWM_RESOLUTION = 8; 
-
-
-/*бібліотеки для роботи олед дисплея*/
 #include <Wire.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <FluxGarage_RoboEyes72x40.h>
 
-#define SdaPin 5
-#define SclPin 6
-
-#define ScreenWidth 128
-#define ScreenHeight 64
-#define OledReset    -1
+// ===== PROJECT MODULES =====
+#include "config.h"
+#include "images.h"
+#include "display.h"
+// ===== GLOBAL OBJECTS =====
+GyverDBFile db(&LittleFS, "/data.db");
+SettingsGyver sett("SONIAH", &db);
 Adafruit_SSD1306 display(ScreenWidth, ScreenHeight, &Wire, OledReset); 
-
 RoboEyes<Adafruit_SSD1306> roboEyes(display);
 
-/*=============бінд пінів=================*/
-#define voltmeterPin 3 // пін для вольтметра
-//піни для визначення позиції перемикача ліхтарика
-#define positionOnepin 1 //додати номер піна 
-#define positionTwopin 2 //додати номер піна 
-//піни для керування кольором світла
-#define redLightPin 4 //додати номер піна
-#define whiteLightPin 7 //додати номер піна
-//пін для керування яскравістю світла
-#define brightnessPin 0 //додати номер піна
+// ===== GLOBAL STATE =====
+Data data;
+Lang lng;
+RoboEyesConfig roboeyesconfig;
+PowerManagement powerManagement;
+RTC_DATA_ATTR bool sleepByTimer = false;
+
+// ===== WEB UI HELPER =====
+// Maps battery percent to widget color. UI concern — lives near build/update.
+sets::Colors batteryWidgetColorChange(int value) {
+  if (value < 30) {
+      return sets::Colors::Red;
+  } else if (value < 70) {
+      return sets::Colors::Yellow;
+  } else {
+      return sets::Colors::Green;
+  }
+}
+
+// ===== WEB UI BUILD =====
+// Note: build/update are SettingsGyver callbacks — they cannot receive
+// custom parameters, so they access global state (data, db, lng) directly.
+// This is an intentional exception to the no-globals rule.
+void build(sets::Builder& b) {
+  int lang = (int)db[kk::language];
+  b.HTML("", "<style>span[style*='margin-top: 18px']{display:none!important;}</style>");
+  b.Image(H(img), "", "/logo.avif");
+  b.LinearGauge(H(batCharge), lng.BATTERY[lang], 0, 100, "", data.batteryChargePercent,batteryWidgetColorChange(data.batteryChargePercent));
+  
+  
+  if (b.beginGroup(lng.SWITCHER1[lang])) {
+      b.Slider(kk::brightnessValuePosition1, lng.BRIGHTNESS[lang], 0, 100,1);
+      if (b.beginRow()) {
+        b.LED(H(led1), lng.POSITION1[lang],1, sets::Colors::Yellow,sets::Colors::Red);
+        b.Switch(kk::switchPosition1, "");
+        b.LED(H(led2), "",0, sets::Colors::Yellow,sets::Colors::Red);
+        b.endRow();
+      }
+      b.endGroup();
+  }
+
+  if (b.beginGroup(lng.SWITCHER2[lang])) {
+    b.Slider(kk::brightnessValuePosition2, lng.BRIGHTNESS[lang], 0, 100,1);
+    if (b.beginRow()) {
+      b.LED(H(led3), lng.POSITION2[lang],1, sets::Colors::Yellow,sets::Colors::Red);
+      b.Switch(kk::switchPosition2, "");
+      b.LED(H(led4), "",0, sets::Colors::Yellow,sets::Colors::Red);
+      b.endRow();
+    }
+  b.endGroup(); 
+  }
+  if (b.beginGroup(lng.SCREEN[lang])) {
+  b.Select(kk::displayMode, lng.DISPLAYMODE[lang], "Battery Charge;Time to discharge;Robot Eyes;Battery image");
+  b.endGroup(); 
+  }
+  if (b.beginMenu(lng.TIMER[lang])) {
+    if (b.beginGroup(lng.TIMER[lang])) {
+    b.Time(H(timerDisplay), lng.REMINING[lang]);
+    b.Slider(kk::TimerSlider, lng.SETTIME[lang], 0, 59, 1);
+
+    if (b.beginButtons()) {
+      if (b.Button(H(btnStart), lng.START[lang])) {
+        data.timerActive = true;
+        data.timerEndMillis = millis() + (int)db[kk::TimerSlider] * 60 * 1000UL;
+      }
+      if (b.Button(H(btnStop), lng.STOP[lang], sets::Colors::Red)) {
+        data.timerActive = false;
+        data.timerDisplay = 0;
+        data.timerEndMillis = 0; 
+      }
+    b.endButtons();
+    }
+    b.endGroup();
+    }
+  b.endMenu();
+  }
+  if (b.beginMenu(lng.MAINSETTINGS[lang])) {
+    if (b.beginGroup(lng.WIFICOLORSETTINGS[lang])) {
+      b.Input(kk::wifiSsid, lng.SSID[lang]);
+      b.Pass(kk::wifiPass, lng.PASSWORD[lang]);
+      b.Label("IP", WiFi.localIP().toString());
+      b.Select(kk::themeColor, lng.THEMECOLOR[lang], "Green;Red;Blue;Yellow;Mint;Orange;Pink;Aqua;Violet");  // ← додати
+      if (b.Button(kk::apply, lng.SAVEBUTTON[lang])) {
+        db.update();
+        ESP.restart();
+        
+      }
+    b.endGroup();
+    }
+    if (b.beginGroup(lng.LANGUAGE[lang])) {
+      b.Select(kk::language, lng.LANGUAGE[lang], "English;Українська"); 
+      if (b.build.id == kk::language) {
+        lang = (int)db[kk::language];
+        b.reload();
+      }
+
+    }
+    b.endGroup();
+  b.endMenu();  
+  }
+}
+
+void update(sets::Updater u) {
+  u.update(H(batCharge), data.batteryChargePercent);
+  u.updateColor(H(batCharge), batteryWidgetColorChange(data.batteryChargePercent));
+  /*data.timerDisplay = manageTimer();*/
+  u.update(H(timerDisplay), data.timerDisplay);
+}
+
+/*NOT NORMALIZED*/
+
 /*=========================ФУНКЦІЇ===========================*/
 /*перевірка і вхід у режим глибокого сну*/
 void enterDeepSleep(bool byTimer) {
@@ -246,142 +261,14 @@ void adjustBrightness(int brightnessValue) {
   int pwmValue = brightnessValue * powerManagement.BRIGHTNESS_MULTIPLIER / 100;
   ledcWrite(PWM_CHANNEL, pwmValue);  // ← замість analogWrite()
 }
-/*відображення кольору віджета батареї*/
-sets::Colors batteryWidgetColorChange(int value) {
-  if (value < 30) {
-      return sets::Colors::Red;
-  } else if (value < 70) {
-      return sets::Colors::Yellow;
-  } else {
-      return sets::Colors::Green;
-  }
-}
-/*відображення відсотків заряду батареї на OLED дисплеї*/
-void displayChargeLevel(int info) {
-  static uint32_t tmrCharge = 0;
-  if (millis() - tmrCharge < 1000) return;  // оновлюємо не частіше 1 разу/сек
-  tmrCharge = millis();
 
-  display.clearDisplay();
-  if (info == 100) {
-      display.setCursor(30,10);
-  } else if (info >= 10) {
-      display.setCursor(45,10);
-  } else {
-      display.setCursor(54,10);
-  }
-  display.println(info);
-  display.display();
-}
-/*графічне відображення заряду батарейки на OLED дисплеї*/
-void displayChargeBatteryImage(int info) {
-  
-  static uint32_t tmrCharge = 0;
-  if (millis() - tmrCharge < 1000) return;  // оновлюємо не частіше 1 секунду]
-  tmrCharge = millis();
 
-  int fillSegment[4] = {0,0,0,0};
-
-  if (info > 75) {
-    fillSegment[0] = 1;
-    fillSegment[1] = 1;
-    fillSegment[2] = 1;
-    fillSegment[3] = 1;
-  } else if (info > 50) {
-    fillSegment[0] = 1;
-    fillSegment[1] = 1;
-    fillSegment[2] = 1;
-    fillSegment[3] = 0;
-  } else if (info > 25) {
-    fillSegment[0] = 1;
-    fillSegment[1] = 1;
-    fillSegment[2] = 0;
-    fillSegment[3] = 0;
-  } else if (info > 25){
-    fillSegment[0] = 1;
-    fillSegment[1] = 0;
-    fillSegment[2] = 0;
-    fillSegment[3] = 0;
-  }else {
-    fillSegment[0] = 0;
-    fillSegment[1] = 0;
-    fillSegment[2] = 0;
-    fillSegment[3] = 0;
-  }
-  display.clearDisplay();
-  display.drawRect(34, 5, 52, 32, 1);
-  display.fillRect(37, 8, 10, 26, fillSegment[3]);
-  display.fillRect(49, 8, 10, 26, fillSegment[2]);
-  display.fillRect(61, 8, 10, 26, fillSegment[1]);
-  display.fillRect(73, 8, 10, 26, fillSegment[0]);
-  display.fillRect(30, 13, 5, 16, 1);
-  display.display();  
-}
-/*відображення кількості часу, що залишився до розрядки батареї на OLED дисплеї*/
-void displayEstimationTime(int estimatedHours) {
-  static uint32_t tmrEstimation = 0;
-  if (millis() - tmrEstimation < 1000) return;  // оновлюємо не частіше 1 разу/сек
-  tmrEstimation = millis();
-    
-  display.clearDisplay();
-  if (estimatedHours >= 10) {
-      display.setCursor(30,10);
-  } else {display.setCursor(45,10);
-  }
-  //display.setCursor(30,10);//перший координат - по горизонталі, другий - по вертикалі 
-  display.println(String(estimatedHours));
-  display.drawBitmap(65, 4, image_clock_bits, 30, 32, 1);
-  display.display();
-}
 /*вибір рандомного числа*/
 int getRandomNumber(int maxValue) {
   return random(1, maxValue + 1);
 }
 /*анімація очей робота*/
-void displayRoboEyesAnimation() {
-  roboEyes.update();
-  static uint32_t tmrAnimation;
-  const unsigned long EYE_ANIMATION_INTERVAL = 3 * 60 * 1000; // інтервал зміни анімації в мілісекундах (3 хвилини)
-  if (millis() - tmrAnimation >= EYE_ANIMATION_INTERVAL) { // кожні 3 хвилини змінюємо анімацію
-      int randNumFace = getRandomNumber(4);
-      tmrAnimation = millis();
-      switch (randNumFace) {
-          case 1:
-              roboEyes.setMood(DEFAULT);
-              roboEyes.anim_laugh();
-              break;
-          case 2:
-              roboEyes.setMood(TIRED);
-              roboEyes.anim_confused();
-              break;
-          case 3:
-              roboEyes.setMood(ANGRY);
-              roboEyes.anim_confused();
-              break;
-          case 4:
-              roboEyes.setMood(HAPPY);
-              roboEyes.anim_laugh();
-              break;
-      }
-  }
-}
-/*відображення таймера на OLED дисплеї*/
-void displayTimerCountdown(uint32_t remainingSeconds) {
-  static uint32_t tmrDisplay = 0;
-  if (millis() - tmrDisplay < 1000) return;
-  tmrDisplay = millis();
 
-  display.clearDisplay();
-  display.setTextSize(2);  // ← зменшуємо розмір
-  int m = remainingSeconds / 60;
-  int s = remainingSeconds % 60;
-  String timeStr = (m < 10 ? "0" : "") + String(m) + ":" +
-                   (s < 10 ? "0" : "") + String(s);
-  display.setCursor(28, 10);
-  display.println(timeStr);
-  display.display();
-  display.setTextSize(3);  // ← повертаємо назад
-}
 /*мапінг режимів перемикача та кольорів ліхтаря + регулювання яскравості*/
 void manageSwitcherPosition() {
   static int lastBrightnessPosition1 = -1;
@@ -406,97 +293,6 @@ void manageSwitcherPosition() {
           adjustBrightness(lastBrightnessPosition2);
       }
   }
-}
-/*----------------------------------------------------------------------------*/
-/*=======================================*/
-
-
-
-/*створення блоків веб  інтерфейсу*/
-void build(sets::Builder& b) {
-  int lang = (int)db[kk::language];
-  b.HTML("", "<style>span[style*='margin-top: 18px']{display:none!important;}</style>");
-  b.Image(H(img), "", "/logo.avif");
-  b.LinearGauge(H(batCharge), lng.BATTERY[lang], 0, 100, "", data.batteryChargePercent,batteryWidgetColorChange(data.batteryChargePercent));
-  
-  
-  if (b.beginGroup(lng.SWITCHER1[lang])) {
-      b.Slider(kk::brightnessValuePosition1, lng.BRIGHTNESS[lang], 0, 100,1);
-      if (b.beginRow()) {
-        b.LED(H(led1), lng.POSITION1[lang],1, sets::Colors::Yellow,sets::Colors::Red);
-        b.Switch(kk::switchPosition1, "");
-        b.LED(H(led2), "",0, sets::Colors::Yellow,sets::Colors::Red);
-        b.endRow();
-      }
-      b.endGroup();
-    }
-
-  if (b.beginGroup(lng.SWITCHER2[lang])) {
-    b.Slider(kk::brightnessValuePosition2, lng.BRIGHTNESS[lang], 0, 100,1);
-    if (b.beginRow()) {
-      b.LED(H(led3), lng.POSITION2[lang],1, sets::Colors::Yellow,sets::Colors::Red);
-      b.Switch(kk::switchPosition2, "");
-      b.LED(H(led4), "",0, sets::Colors::Yellow,sets::Colors::Red);
-      b.endRow();
-    }
-  b.endGroup(); 
-  }
-  if (b.beginGroup(lng.SCREEN[lang])) {
-  b.Select(kk::displayMode, lng.DISPLAYMODE[lang], "Battery Charge;Time to discharge;Robot Eyes;Battery image");
-  b.endGroup(); 
-  }
-  if (b.beginMenu(lng.TIMER[lang])) {
-    if (b.beginGroup(lng.TIMER[lang])) {
-    b.Time(H(timerDisplay), lng.REMINING[lang]);
-    b.Slider(kk::TimerSlider, lng.SETTIME[lang], 0, 59, 1);
-
-    if (b.beginButtons()) {
-      if (b.Button(H(btnStart), lng.START[lang])) {
-        data.timerActive = true;
-        data.timerEndMillis = millis() + (int)db[kk::TimerSlider] * 60 * 1000UL;
-      }
-      if (b.Button(H(btnStop), lng.STOP[lang], sets::Colors::Red)) {
-        data.timerActive = false;
-        data.timerDisplay = 0;
-        data.timerEndMillis = 0; 
-      }
-      b.endButtons();
-    }
-  b.endGroup();
-  }
-b.endMenu();
-}
-  if (b.beginMenu(lng.MAINSETTINGS[lang])) {
-    if (b.beginGroup(lng.WIFICOLORSETTINGS[lang])) {
-      b.Input(kk::wifiSsid, lng.SSID[lang]);
-      b.Pass(kk::wifiPass, lng.PASSWORD[lang]);
-      b.Label("IP", WiFi.localIP().toString());
-      b.Select(kk::themeColor, lng.THEMECOLOR[lang], "Green;Red;Blue;Yellow;Mint;Orange;Pink;Aqua;Violet");  // ← додати
-      if (b.Button(kk::apply, lng.SAVEBUTTON[lang])) {
-        db.update();
-        ESP.restart();
-        
-      }
-    b.endGroup();
-    }
-    if (b.beginGroup(lng.LANGUAGE[lang])) {
-      b.Select(kk::language, lng.LANGUAGE[lang], "English;Українська"); 
-      if (b.build.id == kk::language) {
-        lang = (int)db[kk::language];
-        b.reload();
-      }
-
-    }
-    b.endGroup();
-  b.endMenu();  
-  }
-}
-
-void update(sets::Updater u) {
-  u.update(H(batCharge), data.batteryChargePercent);
-  u.updateColor(H(batCharge), batteryWidgetColorChange(data.batteryChargePercent));
-  /*data.timerDisplay = manageTimer();*/
-  u.update(H(timerDisplay), data.timerDisplay);
 }
 
 void setup() {
@@ -663,17 +459,17 @@ void loop() {
 /*вибір режиму відображення на OLED дисплеї*/
   if (data.timerActive) {
     data.timerDisplay = manageTimer();
-    displayTimerCountdown(data.timerDisplay);
+    displayTimerCountdown(display, data.timerDisplay);
 } else {
   switch ((int)db[kk::displayMode]) {
-    case 0: displayChargeLevel(data.batteryChargePercent); break;
-    case 1: displayEstimationTime(estimationTimeHours(
+    case 0: displayChargeLevel(display, data.batteryChargePercent); break;
+    case 1: displayEstimationTime(display, estimationTimeHours(
               data.batteryChargePercent,
               digitalRead(positionTwopin) == LOW ?
                 (int)db[kk::brightnessValuePosition1] :
                 (int)db[kk::brightnessValuePosition2])); break;
-    case 2: displayRoboEyesAnimation(); break;
-    case 3: displayChargeBatteryImage(data.batteryChargePercent); break;
+    case 2: displayRoboEyesAnimation(roboEyes); break;
+    case 3: displayChargeBatteryImage(display, data.batteryChargePercent); break;
   }
 }
 
