@@ -200,18 +200,8 @@ if (condition) {
 }
 ```
 
----
-
-## File Structure
-```
-src/
-  main.cpp        — setup(), loop() only
-  config.h        — all pins, constants, enums, structs
-  display.h       — OLED rendering
-  battery.h       — charge measurement
-  light.h         — PWM + color
-  sleep.h         — deep sleep
-  encoder.h       — EncButton gestures        (planned)
-  wifi_mgr.h      — WiFi on-demand            (planned)
-  images.h        — PROGMEM bitmaps (unchanged)
-```
+### S15. Universal project structure
+main.cpp
+.h
+.h
+.h
