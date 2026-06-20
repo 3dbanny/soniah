@@ -125,7 +125,7 @@ void build(sets::Builder& b) {
   }
 }
 
-void update(sets::Updater u) {
+void update(sets::Updater& u) {
   u.update(H(batCharge), data.batteryChargePercent);
   u.updateColor(H(batCharge), batteryWidgetColorChange(data.batteryChargePercent));
   /*data.timerDisplay = manageTimer();*/

@@ -1,15 +1,36 @@
-# SONIAH Flashlight — Claude Rules
 
 ## Clean Code Rules
 
 ### 1. Functions must not access global variables directly
 Functions receive what they need via **parameters** and return results. No hidden dependencies.
-```cpp
-// ❌ Bad
-int batCharge() { return analogRead(voltmeterPin); }
 
-// ✅ Good
+If a function **cannot be written without accessing a global**, do not create that function at all.
+Inline the logic at the call site (which is already an intentional exception per Rule 11) rather than
+wrapping it in a function that pretends to be clean but secretly depends on globals.
+
+```cpp
+// ❌ Bad — hides global dependency behind a function signature
+void toggleLed() {
+    db[kk::ledState] = !db[kk::ledState];   // db is global
+    digitalWrite(ledLightPin, ...);          // ledLightPin is global
+}
+
+// ❌ Also bad — wrapper with parameters still only callable with globals
+void toggleLed(GyverDBFile& db, uint8_t pin) { ... }
+// only ever called as: toggleLed(db, ledLightPin) — globals leak through
+
+// ✅ Good — function is genuinely reusable without knowledge of globals
 int batCharge(uint8_t pin, const PowerManagement& pm) { ... }
+// caller decides what pin and struct to pass — no globals required
+
+// ✅ Good — logic that cannot avoid globals stays inlined at the exception site
+// Note: build() is a SettingsGyver callback — intentional exception (Rule 11).
+void build(sets::Builder& b) {
+    if (b.Button(kk::ledButton, "LED Button")) {
+        db[kk::ledState] = !static_cast<bool>(db[kk::ledState]);  // inlined — no fake wrapper
+        digitalWrite(ledLightPin, db[kk::ledState] ? HIGH : LOW);
+    }
+}
 ```
 
 ### 2. One function — one responsibility
@@ -200,8 +221,6 @@ if (condition) {
 }
 ```
 
-### S15. Universal project structure
-main.cpp
-.h
-.h
-.h
+---
+
+
